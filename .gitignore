@@ -1,0 +1,5 @@
+*.retry
+.ansible/
+.codex
+group_vars/all/vault.yml
+

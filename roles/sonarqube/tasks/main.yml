@@ -1,0 +1,135 @@
+---
+- name: Create sonar user
+  user:
+    name: sonar
+    system: yes
+    shell: /bin/bash
+
+- name: Install PostgreSQL (for SonarQube)
+  dnf:
+    name: postgresql-server
+    state: present
+
+- name: Install PostgreSQL Python dependencies
+  dnf:
+    name: python3-psycopg2
+    state: present
+
+- name: Initialize PostgreSQL
+  command: postgresql-setup --initdb
+  args:
+    creates: /var/lib/pgsql/data/PG_VERSION
+
+- name: Start and enable PostgreSQL
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Allow password auth for SonarQube database user via local socket
+  lineinfile:
+    path: /var/lib/pgsql/data/pg_hba.conf
+    insertbefore: '^local\s+all\s+all'
+    line: 'local   sonarqube   sonar                                md5'
+
+- name: Allow password auth for SonarQube database user over IPv4 localhost
+  lineinfile:
+    path: /var/lib/pgsql/data/pg_hba.conf
+    insertbefore: '^host\s+all\s+all\s+127\.0\.0\.1/32'
+    line: 'host    sonarqube   sonar   127.0.0.1/32                 md5'
+
+- name: Allow password auth for SonarQube database user over IPv6 localhost
+  lineinfile:
+    path: /var/lib/pgsql/data/pg_hba.conf
+    insertbefore: '^host\s+all\s+all\s+::1/128'
+    line: 'host    sonarqube   sonar   ::1/128                      md5'
+
+- name: Restart PostgreSQL after pg_hba change
+  systemd:
+    name: postgresql
+    state: restarted
+
+- name: Create SonarQube PostgreSQL user
+  become_user: postgres
+  postgresql_user:
+    name: sonar
+    password: "{{ vault_sonar_db_password }}"
+    state: present
+
+- name: Create SonarQube database
+  become_user: postgres
+  postgresql_db:
+    name: sonarqube
+    owner: sonar
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+
+- name: Create Sonar directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: sonar
+    group: sonar
+    mode: '0755'
+  loop:
+    - "{{ sonarqube_install_dir }}"
+    - /opt/sonarqube-data
+
+- name: Download SonarQube
+  get_url:
+    url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{ sonarqube_version }}.zip"
+    dest: /tmp/sonarqube.zip
+    mode: '0755'
+
+- name: Extract SonarQube
+  unarchive:
+    src: /tmp/sonarqube.zip
+    dest: "{{ sonarqube_install_dir }}"
+    remote_src: yes
+
+- name: Set SonarQube ownership
+  file:
+    path: "{{ sonarqube_install_dir }}"
+    owner: sonar
+    group: sonar
+    recurse: yes
+
+- name: Configure SonarQube properties
+  lineinfile:
+    path: "{{ sonarqube_install_dir }}/conf/sonar.properties"
+    regexp: "^#?{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - { key: 'sonar.jdbc.username', value: 'sonar' }
+    - { key: 'sonar.jdbc.password', value: "{{ vault_sonar_db_password }}" }
+    - { key: 'sonar.jdbc.url', value: 'jdbc:postgresql://localhost:5432/sonarqube' }
+    - { key: 'sonar.web.port', value: '9000' }
+
+- name: Create SonarQube systemd service
+  copy:
+    dest: /etc/systemd/system/sonarqube.service
+    content: |
+      [Unit]
+      Description=SonarQube service
+      After=network.target postgresql.service
+
+      [Service]
+      Type=forking
+      ExecStart={{ sonarqube_install_dir }}/bin/linux-x86-64/sonar.sh start
+      ExecStop={{ sonarqube_install_dir }}/bin/linux-x86-64/sonar.sh stop
+      User=sonar
+      Restart=on-failure
+      LimitNOFILE=65536
+      LimitNPROC=4096
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+
+- name: Start and enable SonarQube
+  systemd:
+    name: sonarqube
+    state: started
+    enabled: yes
+    daemon_reload: yes

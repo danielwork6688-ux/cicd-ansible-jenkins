@@ -1,0 +1,10 @@
+---
+# Copy this file to group_vars/all/vault.yml and replace the values locally.
+# For real use, encrypt group_vars/all/vault.yml with ansible-vault.
+vault_sonar_db_password: "CHANGE_ME_STRONG_PASSWORD"
+vault_nexus_username: "admin"
+vault_slack_token: "CHANGE_ME"
+vault_nexus_password: "CHANGE_ME"
+vault_sonar_token: "CHANGE_ME"
+vault_jenkins_admin_password: "CHANGE_ME"
+

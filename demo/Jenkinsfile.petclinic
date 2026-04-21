@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        PETCLINIC_REPO = 'https://github.com/spring-projects/spring-petclinic.git'
+        PETCLINIC_BRANCH = 'main'
+        SONAR_HOST_URL = 'http://TARGET_HOST_IP:9000'
+        IMAGE_NAME = 'spring-petclinic'
+        CONTAINER_NAME = 'spring-petclinic-demo'
+        APP_PORT = '8082'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: env.PETCLINIC_BRANCH, url: env.PETCLINIC_REPO
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh './mvnw test'
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        ./mvnw sonar:sonar \
+                          -Dsonar.host.url="${SONAR_HOST_URL}" \
+                          -Dsonar.token="${SONAR_TOKEN}" \
+                          -Dsonar.projectKey=spring-petclinic
+                    '''
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh './mvnw package -DskipTests'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    ./mvnw spring-boot:build-image \
+                      -DskipTests \
+                      -Dspring-boot.build-image.imageName="${IMAGE_NAME}:${BUILD_NUMBER}"
+                '''
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh '''
+                    docker rm -f "${CONTAINER_NAME}" || true
+                    docker run -d \
+                      --name "${CONTAINER_NAME}" \
+                      -p "${APP_PORT}:8080" \
+                      "${IMAGE_NAME}:${BUILD_NUMBER}"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker ps --filter "name=${CONTAINER_NAME}"'
+        }
+        success {
+            echo "Spring Petclinic is available on http://BUILD_HOST_IP:${APP_PORT}"
+        }
+    }
+}
+

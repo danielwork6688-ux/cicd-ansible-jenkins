@@ -1,0 +1,86 @@
+---
+- name: Create nexus user
+  user:
+    name: nexus
+    system: yes
+    shell: /bin/bash
+
+- name: Create Nexus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: nexus
+    group: nexus
+    mode: '0755'
+  loop:
+    - "{{ nexus_install_dir }}"
+    - "{{ nexus_data_dir }}"
+
+- name: Download Nexus
+  get_url:
+    url: "https://download.sonatype.com/nexus/3/nexus-{{ nexus_version }}-java17-unix.tar.gz"
+    dest: "/tmp/nexus-{{ nexus_version }}-java17.tar.gz"
+    mode: '0755'
+
+- name: Remove existing Nexus install directory
+  file:
+    path: "{{ nexus_install_dir }}"
+    state: absent
+
+- name: Recreate Nexus install directory
+  file:
+    path: "{{ nexus_install_dir }}"
+    state: directory
+    owner: nexus
+    group: nexus
+    mode: '0755'
+
+- name: Extract Nexus
+  unarchive:
+    src: "/tmp/nexus-{{ nexus_version }}-java17.tar.gz"
+    dest: "{{ nexus_install_dir }}"
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+
+- name: Set Nexus ownership
+  file:
+    path: "{{ nexus_install_dir }}"
+    state: directory
+    owner: nexus
+    group: nexus
+    recurse: yes
+
+- name: Configure Nexus runtime
+  lineinfile:
+    path: "{{ nexus_install_dir }}/bin/nexus.rc"
+    regexp: '^#?run_as_user='
+    line: 'run_as_user="nexus"'
+
+- name: Create Nexus systemd service
+  copy:
+    dest: /etc/systemd/system/nexus.service
+    content: |
+      [Unit]
+      Description=Nexus Repository Manager
+      After=network.target
+      
+      [Service]
+      Type=forking
+      LimitNOFILE=65536
+      User=nexus
+      Environment="INSTALL4J_JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
+      Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
+      ExecStart={{ nexus_install_dir }}/bin/nexus start
+      ExecStop={{ nexus_install_dir }}/bin/nexus stop
+      Restart=on-failure
+      
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+
+- name: Start and enable Nexus
+  systemd:
+    name: nexus
+    state: started
+    enabled: yes
+    daemon_reload: yes

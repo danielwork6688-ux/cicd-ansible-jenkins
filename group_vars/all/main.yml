@@ -1,0 +1,21 @@
+---
+# Common variables
+java_version: 17
+docker_version: "24.0"
+
+# Nexus settings
+nexus_version: "3.69.0-02"
+nexus_install_dir: /opt/nexus
+nexus_data_dir: /opt/sonatype-work
+
+# SonarQube settings
+sonarqube_version: "9.9.0.65466"
+sonarqube_install_dir: /opt/sonarqube/sonarqube-9.9.0.65466
+
+# Jenkins settings
+jenkins_version: "2.426.3"
+jenkins_home: /var/jenkins_home
+
+# Application settings
+petclinic_repo: "https://github.com/spring-projects/spring-petclinic.git"
+petclinic_branch: "main"

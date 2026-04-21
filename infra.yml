@@ -1,0 +1,25 @@
+---
+- name: Target 1 - Build Servers
+  hosts: build_servers
+  become: true
+  pre_tasks:
+    - name: Print executing user
+      ansible.builtin.debug:
+        msg: "Running as {{ lookup('env', 'USER') }}"
+  roles:
+    - jenkins_docker
+
+- name: Target 2 - Shared Services  
+  hosts: shared_services
+  become: true
+  strategy: free
+  pre_tasks:
+    - name: Update system on target
+      dnf:
+        name: '*'
+        state: latest
+        update_cache: yes
+  roles:
+    - common
+    - nexus
+    - sonarqube
