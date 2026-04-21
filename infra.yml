@@ -7,18 +7,21 @@
       ansible.builtin.debug:
         msg: "Running as {{ lookup('env', 'USER') }}"
   roles:
+    - common
     - jenkins_docker
 
-- name: Target 2 - Shared Services  
+- name: Target 2 - Shared Services
   hosts: shared_services
   become: true
   strategy: free
   pre_tasks:
-    - name: Update system on target
-      dnf:
-        name: '*'
-        state: latest
-        update_cache: yes
+    - name: Validate required secret values
+      ansible.builtin.assert:
+        that:
+          - vault_sonar_db_password is defined
+          - vault_sonar_db_password | length > 0
+          - vault_sonar_db_password != 'CHANGE_ME_STRONG_PASSWORD'
+        fail_msg: "Set a real vault_sonar_db_password in group_vars/all/vault.yml before provisioning SonarQube."
   roles:
     - common
     - nexus

@@ -1,12 +1,12 @@
 ---
 - name: Create nexus user
-  user:
+  ansible.builtin.user:
     name: nexus
     system: yes
     shell: /bin/bash
 
 - name: Create Nexus directories
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     owner: nexus
@@ -17,33 +17,22 @@
     - "{{ nexus_data_dir }}"
 
 - name: Download Nexus
-  get_url:
+  ansible.builtin.get_url:
     url: "https://download.sonatype.com/nexus/3/nexus-{{ nexus_version }}-java17-unix.tar.gz"
     dest: "/tmp/nexus-{{ nexus_version }}-java17.tar.gz"
     mode: '0755'
 
-- name: Remove existing Nexus install directory
-  file:
-    path: "{{ nexus_install_dir }}"
-    state: absent
-
-- name: Recreate Nexus install directory
-  file:
-    path: "{{ nexus_install_dir }}"
-    state: directory
-    owner: nexus
-    group: nexus
-    mode: '0755'
-
 - name: Extract Nexus
-  unarchive:
+  ansible.builtin.unarchive:
     src: "/tmp/nexus-{{ nexus_version }}-java17.tar.gz"
     dest: "{{ nexus_install_dir }}"
     remote_src: yes
     extra_opts: [--strip-components=1]
+    creates: "{{ nexus_install_dir }}/bin/nexus"
+  notify: Restart Nexus
 
 - name: Set Nexus ownership
-  file:
+  ansible.builtin.file:
     path: "{{ nexus_install_dir }}"
     state: directory
     owner: nexus
@@ -51,35 +40,37 @@
     recurse: yes
 
 - name: Configure Nexus runtime
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ nexus_install_dir }}/bin/nexus.rc"
     regexp: '^#?run_as_user='
     line: 'run_as_user="nexus"'
+  notify: Restart Nexus
 
 - name: Create Nexus systemd service
-  copy:
+  ansible.builtin.copy:
     dest: /etc/systemd/system/nexus.service
     content: |
       [Unit]
       Description=Nexus Repository Manager
       After=network.target
-      
+
       [Service]
       Type=forking
       LimitNOFILE=65536
       User=nexus
-      Environment="INSTALL4J_JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
-      Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
+      Environment="INSTALL4J_JAVA_HOME={{ java_home }}"
+      Environment="JAVA_HOME={{ java_home }}"
       ExecStart={{ nexus_install_dir }}/bin/nexus start
       ExecStop={{ nexus_install_dir }}/bin/nexus stop
       Restart=on-failure
-      
+
       [Install]
       WantedBy=multi-user.target
     mode: '0644'
+  notify: Restart Nexus
 
 - name: Start and enable Nexus
-  systemd:
+  ansible.builtin.systemd:
     name: nexus
     state: started
     enabled: yes

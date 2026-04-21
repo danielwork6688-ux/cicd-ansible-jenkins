@@ -1,12 +1,13 @@
 ---
 - name: Update all packages
-  dnf:
+  ansible.builtin.dnf:
     name: '*'
     state: latest
     update_cache: yes
+  when: update_all_packages | bool
 
 - name: Install common packages
-  dnf:
+  ansible.builtin.dnf:
     name:
       - git
       - wget
@@ -20,7 +21,8 @@
     state: present
 
 - name: Set JAVA_HOME
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/environment
-    line: 'JAVA_HOME=/usr/lib/jvm/java-17-openjdk'
+    regexp: '^JAVA_HOME='
+    line: "JAVA_HOME={{ java_home }}"
     create: yes
